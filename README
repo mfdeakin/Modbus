@@ -1,0 +1,7 @@
+Just a simple class for talking with Modbus TCP devices.
+Specifcally for things like the AKD Basic Drive.
+
+TODO:
+Fix my lazy exception handling
+Implement register writing
+Maybe also complete the Modbus TCP specs and get reading and writing coils working
