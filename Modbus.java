@@ -15,11 +15,13 @@ public class Modbus {
 	throws UnknownHostException
     {
 	this.ip = Inet4Address.getByName(ip);
+	tid = 0;
     }
 
     public Modbus(InetAddress ip)
     {
 	this.ip = ip;
+	tid = 0;
     }
 
     private void printException(byte[] response)
@@ -49,12 +51,22 @@ public class Modbus {
 	Socket socket = new Socket(ip, MODBUS_PORT);
 	/* Tell the drive we need to read registers at the address
 	 * Modbus Read Command:
-	 * Function Code: Byte 0
-	 * Starting Address: Bytes 1-2
-	 * Quantity of Registers: Bytes 3-4
+	 * Transaction Identifier: Byte 1-2
+	 * Protocol identifier = 0: Byte 3-4
+	 * Length (bytes) field (upper byte) = 0: Byte 5-6
+	 * Unit identifier (previously slave address): Byte 7
+	 * Function Code: Byte 8
+	 * Starting Address: Bytes 9-10
+	 * Quantity of Registers: Bytes 11-12
 	 */
-	ByteBuffer cmd = ByteBuffer.allocate(5);
+	final short readlen = 12;
+	ByteBuffer cmd = ByteBuffer.allocate(readlen);
 	cmd.order(ByteOrder.BIG_ENDIAN);
+	cmd.putShort(tid);
+	tid++;
+	cmd.putShort((short)0);
+	cmd.putShort(readlen);
+	cmd.put((byte)0);
 	cmd.put(MODBUS_READ);
 	cmd.putShort(addr);
 	cmd.putShort(size);
@@ -75,8 +87,7 @@ public class Modbus {
 	assert(check[0] == MODBUS_READ);
 	if(socket.getInputStream().available() < 2 + 2 * size) {
 	    printException(check);
-	    /* Because I'm a terrible and lazy programmer and it's midnight */
-	    throw new Exception();
+	    throw new ModbusReturnException();
 	}
 	/* We're clear. Now just get the data,
 	 * and put it in a usable format (easier said than done) */
@@ -110,4 +121,9 @@ public class Modbus {
     }
 
     InetAddress ip;
+    short tid;
+
+    class ModbusReturnException extends Exception
+    {
+    }
 }
