@@ -95,16 +95,18 @@ public class Modbus {
 	 */
 	final int headerlen = 9;
 	final int bytes = headerlen + expectedlen;
+	/* Just block until we have the data */
 	while(socket.getInputStream().available() < bytes);
-	System.out.printf("Number of bytes recieved: %d\n",
-			  socket.getInputStream().available());
+	/* Throwing away the header is not the most robust thing
+	 * to do (I currently have no reason to believe I shouldn't),
+	 * but for now it will work
+	 */
 	socket.getInputStream().skip(headerlen);
+	/* Now read the data! */
 	short dest[] = new short[expectedlen / 2];
 	for(int i = 0; i < dest.length; i++) {
 	    byte upper = (byte)socket.getInputStream().read();
 	    byte lower = (byte)socket.getInputStream().read();
-	    System.out.printf("Upper Byte: %02x; Lower Byte: %02x\n",
-			      upper, lower);
 	    dest[i] = (short)(upper << 8);
 	    dest[i] += lower;
 	}
