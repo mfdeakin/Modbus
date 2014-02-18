@@ -1,5 +1,6 @@
 
 import java.io.IOException;
+import java.lang.Integer;
 import java.net.Socket;
 import java.net.InetAddress;
 import java.net.Inet4Address;
@@ -12,16 +13,26 @@ public class Modbus {
     private static final byte MODBUS_READ = 0x03;
     private static final byte MODBUS_WRITE = 0x10;
 
-    public Modbus(String ip)
+    public Modbus(String ip, byte slave)
 	throws UnknownHostException
     {
 	this.ip = Inet4Address.getByName(ip);
+	this.slave = slave;
 	tid = 0;
     }
 
-    public Modbus(InetAddress ip)
+    public Modbus(byte[] ip, byte slave)
+	throws UnknownHostException
+    {
+	this.ip = Inet4Address.getByAddress(ip);
+	this.slave = slave;
+	tid = 0;
+    }
+
+    public Modbus(InetAddress ip, byte slave)
     {
 	this.ip = ip;
+	this.slave = slave;
 	tid = 0;
     }
 
@@ -48,7 +59,7 @@ public class Modbus {
 	/* Tell the drive we need to read registers at the address
 	 * Modbus Read Command:
 	 * Transaction Identifier: Byte 1-2
-	 * Protocol identifier = 0: Byte 3-4
+	 * Protocol Identifier = 0: Byte 3-4
 	 * Length (bytes) field (upper byte) = 0: Byte 5-6
 	 * Unit identifier (previously slave address): Byte 7
 	 * Function Code: Byte 8
@@ -69,37 +80,48 @@ public class Modbus {
 	cmd.putShort(size);
 	return cmd;
     }
-    
-    public void readRegisters(short[] dest, short addr, short size)
-	throws IOException, Exception
+
+    protected short[] readResponse(Socket socket, int expectedlen)
+	throws IOException
     {
-	/* Registers are either 2 or 4 bytes in size */
-	assert size % 2 == 0;
-	size /= 2;
-	Socket socket = new Socket(ip, MODBUS_PORT);
-	ByteBuffer cmd = createReadCmd(addr, size);
-	socket.getOutputStream().write(cmd.array());
-	/* Block until the registers have all been received */
-	while(socket.getInputStream().available() < 2 + 2 * size &&
-	      socket.isConnected());
-	byte[] check = new byte[2];
-	socket.getInputStream().read(check);
-	/* Got the header, check for errors */
-	assert(check[0] == MODBUS_READ);
-	if(socket.getInputStream().available() < 2 + 2 * size) {
-	    printException(check);
-	    throw new ModbusReturnException();
+	/* Modbus Read Response:
+	 * Transaction Identifier: Byte 1-2
+	 * Protocol Identifier = 0: Byte 3-4
+	 * Length (bytes) field (upper byte) = 0: Byte 5-6
+	 * Unit identifier (previously slave address): Byte 7
+	 * Function Code: Byte 8
+	 * Number of Bytes: Byte 9
+	 * Data: Byte 10-
+	 */
+	final int headerlen = 9;
+	final int bytes = headerlen + expectedlen;
+	while(socket.getInputStream().available() < bytes);
+	System.out.printf("Number of bytes recieved: %d\n",
+			  socket.getInputStream().available());
+	socket.getInputStream().skip(headerlen);
+	short dest[] = new short[expectedlen / 2];
+	for(int i = 0; i < dest.length; i++) {
+	    byte upper = (byte)socket.getInputStream().read();
+	    byte lower = (byte)socket.getInputStream().read();
+	    System.out.printf("Upper Byte: %02x; Lower Byte: %02x\n",
+			      upper, lower);
+	    dest[i] = (short)(upper << 8);
+	    dest[i] += lower;
 	}
-	/* We're clear. Now just get the data,
-	 * and put it in a usable format (easier said than done) */
-	byte[] temp = new byte[2 * size];
-	socket.getInputStream().read(temp);
-	ByteBuffer buffer = ByteBuffer.allocate(2 * size);
-	buffer.order(ByteOrder.BIG_ENDIAN);
-	buffer.put(temp);
-	for(int i = 0; i < size; i++)
-	    dest[i] = buffer.getShort();
+	return dest;
+    }
+
+    public short[] readRegisters(short addr, short numregs)
+	throws IOException, ModbusResponseException
+    {
+	short size = (short)(2 * numregs);
+	Socket socket = new Socket(ip, MODBUS_PORT);
+	ByteBuffer cmd = createReadCmd(addr, numregs);
+	socket.getOutputStream().write(cmd.array());
+
+	short dest[] = readResponse(socket, size);
 	socket.close();
+	return dest;
     }
 
     void writeRegisters(short regs[], short addr)
@@ -133,9 +155,10 @@ public class Modbus {
     }
 
     InetAddress ip;
+    byte slave;
     short tid;
 
-    class ModbusReturnException extends Exception
+    class ModbusResponseException extends Exception
     {
     }
 }
