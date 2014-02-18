@@ -126,7 +126,7 @@ public class Modbus {
 	return dest;
     }
 
-    void writeRegisters(short regs[], short addr)
+    public void writeRegisters(short regs[], short addr)
 	throws IOException, Exception
     {
 	Socket socket = new Socket(ip, MODBUS_PORT);
@@ -139,7 +139,7 @@ public class Modbus {
 	 * Starting Address: Bytes 9-10
 	 * Quantity of Registers: Bytes 11-12
 	 */
-	ByteBuffer cmd = ByteBuffer.allocate(12 + 2 * regs.length);
+	ByteBuffer cmd = ByteBuffer.allocate(14 + 2 * regs.length);
 	cmd.putShort(tid);
 	tid++;
 	cmd.putShort((short)0);
@@ -150,10 +150,16 @@ public class Modbus {
 	cmd.putShort(addr);
 	cmd.putShort((short)regs.length);
 	cmd.put((byte)(regs.length * 2));
-	for(int i = 0; i < regs.length; i++) {
-	    cmd.putShort(regs[i]);
+	for(short i : regs) {
+	    cmd.putShort(i);
 	}
 	socket.getOutputStream().write(cmd.array());
+	/* Discard the response, as we don't need it
+	 * and want to make certain it doesn't muck anything
+	 * else up.
+	 */
+	while(socket.getInputStream().available() < 12);
+	socket.close();
     }
 
     InetAddress ip;
